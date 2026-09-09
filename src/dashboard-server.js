@@ -138,6 +138,31 @@ async function createServer() {
   const profileDownloader = new ProfileDownloadController();
 
   app.use(express.json());
+  app.use(express.urlencoded({ extended: false }));
+
+  const cookieSession = require("cookie-session");
+  const { createStore: createAuthStore } = require("./auth-store");
+  const { requireAuth } = require("./auth-middleware");
+
+  const authStore = createAuthStore(path.join(process.cwd(), "data", "auth.json"));
+
+  if (!config.sessionSecret) {
+    const generated = require("node:crypto").randomBytes(32).toString("hex");
+    console.warn(`[auth] SESSION_SECRET missing; using ephemeral secret (sessions reset on restart). Add SESSION_SECRET=${generated} to .env`);
+    config.sessionSecret = generated;
+  }
+
+  app.use(cookieSession({
+    name: "autosocial_session",
+    keys: [config.sessionSecret],
+    maxAge: 7 * 24 * 3600e3,
+    httpOnly: true,
+    sameSite: "lax",
+  }));
+
+  app.use(buildAuthRouter(authStore));
+  app.use(requireAuth);
+
   app.use(createDashboardRequestGuard());
   app.use(express.static(path.join(__dirname, "..", "web")));
 
