@@ -55,3 +55,9 @@ queue/**/*.txt
 # Keep docs visible
 !README.md
 !SETUP.md
+
+# Local dashboard state (never commit)
+data/auth.json
+data/workspaces.json
+data/connections.json
+data/.migration-backup/
