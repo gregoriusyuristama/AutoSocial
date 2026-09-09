@@ -161,6 +161,7 @@ async function createServer() {
   }));
 
   app.use(buildAuthRouter(authStore));
+  app.use("/auth", express.static(path.join(__dirname, "auth"), { extensions: ["html"] }));
   app.use(requireAuth);
 
   app.use(createDashboardRequestGuard());
