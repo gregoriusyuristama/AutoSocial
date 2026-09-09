@@ -80,6 +80,13 @@ const config = {
   dashboardHost: process.env.DASHBOARD_HOST || "127.0.0.1",
   dashboardPort: Number(process.env.DASHBOARD_PORT || 3000),
   dashboardAllowRemote: getBoolean(process.env.DASHBOARD_ALLOW_REMOTE, false),
+  sessionSecret: process.env.SESSION_SECRET || "",
+  vncPortRangeStart: Number(process.env.VNC_PORT_RANGE_START || 5901),
+  vncPortRangeEnd: Number(process.env.VNC_PORT_RANGE_END || 5920),
+  novncPortRangeStart: Number(process.env.NOVNC_PORT_RANGE_START || 6080),
+  novncPortRangeEnd: Number(process.env.NOVNC_PORT_RANGE_END || 6099),
+  vncSessionTtlSeconds: Number(process.env.VNC_SESSION_TTL_SECONDS || 900),
+  vncMaxConcurrent: Number(process.env.VNC_MAX_CONCURRENT || 3),
   uniquifyInputDir: path.resolve(
     projectRoot,
     process.env.UNIQUIFY_INPUT_DIR || "queue/uniquify-input"
