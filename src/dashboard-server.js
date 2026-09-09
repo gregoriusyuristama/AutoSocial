@@ -644,7 +644,81 @@ async function createServer() {
   });
 }
 
-createServer().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+function buildAuthRouter(authStore) {
+  const router = express.Router();
+
+  router.get("/auth/setup", async (req, res) => {
+    if (await authStore.hasAdmin()) return res.redirect("/auth/login");
+    return res.sendFile(require("node:path").join(__dirname, "auth", "setup.html"));
+  });
+
+  router.post("/auth/setup", async (req, res) => {
+    try {
+      const { username, password } = req.body || {};
+      await authStore.createAdmin(username, password);
+      req.session.userId = "admin";
+      return res.redirect("/");
+    } catch (err) {
+      const map = { ADMIN_EXISTS: 409, INVALID_INPUT: 400 };
+      return res.status(map[err.message] || 500).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.get("/auth/login", async (req, res) => {
+    if (!(await authStore.hasAdmin())) return res.redirect("/auth/setup");
+    return res.sendFile(require("node:path").join(__dirname, "auth", "login.html"));
+  });
+
+  router.post("/auth/login", async (req, res) => {
+    const { username, password } = req.body || {};
+    const ok = await authStore.verifyCredentials(username, password);
+    if (!ok) return res.status(401).json({ ok: false, error: "INVALID_CREDENTIALS" });
+    req.session.userId = "admin";
+    const back = typeof req.body.return === "string" ? req.body.return : "/";
+    return res.redirect(back);
+  });
+
+  router.post("/auth/logout", (req, res) => {
+    req.session = null;
+    return res.redirect("/auth/login");
+  });
+
+  router.get("/auth/reset", (_req, res) =>
+    res.sendFile(require("node:path").join(__dirname, "auth", "reset-request.html"))
+  );
+
+  router.post("/auth/reset/request", async (req, res) => {
+    const { username } = req.body || {};
+    try {
+      const token = await authStore.issueResetToken(username);
+      console.log(`\n[auth] Password reset token for ${username}: ${token}\n`);
+    } catch { /* never leak */ }
+    return res.status(200).json({ ok: true });
+  });
+
+  router.get("/auth/reset/confirm", (_req, res) =>
+    res.sendFile(require("node:path").join(__dirname, "auth", "reset-confirm.html"))
+  );
+
+  router.post("/auth/reset/confirm", async (req, res) => {
+    try {
+      const { token, newPassword } = req.body || {};
+      await authStore.consumeResetToken(token, newPassword);
+      return res.status(200).json({ ok: true });
+    } catch (err) {
+      const map = { INVALID_TOKEN: 400, INVALID_INPUT: 400 };
+      return res.status(map[err.message] || 500).json({ ok: false, error: err.message });
+    }
+  });
+
+  return router;
+}
+
+if (require.main === module) {
+  createServer().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports.buildAuthRouter = buildAuthRouter;
