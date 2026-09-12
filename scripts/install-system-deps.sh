@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AutoSocial — install system dependencies for headless browser + noVNC session flow.
+# AutoSocial -- install system dependencies for headless browser + noVNC session flow.
 #
 # Called by:
 #   - Developer/operator on first deploy
@@ -43,17 +43,17 @@ log "Verifying binaries on PATH..."
 FAIL=0
 for bin in Xvfb x11vnc fluxbox websockify; do
   if command -v "${bin}" >/dev/null 2>&1; then
-    log "  ✓ ${bin}"
+    log "  [OK] ${bin}"
   else
-    log "  ✗ ${bin} NOT on PATH"
+    log "  [FAIL] ${bin} NOT on PATH"
     FAIL=1
   fi
 done
 
 if [[ -f /usr/share/novnc/vnc.html ]]; then
-  log "  ✓ noVNC assets at /usr/share/novnc"
+  log "  [OK] noVNC assets at /usr/share/novnc"
 else
-  log "  ✗ noVNC assets missing (expected /usr/share/novnc/vnc.html)"
+  log "  [FAIL] noVNC assets missing (expected /usr/share/novnc/vnc.html)"
   FAIL=1
 fi
 

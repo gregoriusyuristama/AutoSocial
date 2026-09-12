@@ -87,7 +87,7 @@ function createManager(opts) {
         }[platform] || "about:blank";
         page.goto(startUrl).catch(() => {});
       } catch (err) {
-        // Browser launch failed — kill already-spawned children before rethrowing.
+        // Browser launch failed -- kill already-spawned children before rethrowing.
         // Session is not yet registered, so tearDown(connectionId) would find nothing.
         for (const proc of Object.values(children)) {
           try { proc.kill("SIGTERM"); } catch {}

@@ -9,6 +9,7 @@ const excludedTextFiles = new Set([
   "src/platform-ui-labels.js",
   "test/repository-language.test.js",
 ]);
+const excludedPrefixes = ["docs/"];
 const binaryExtensions = new Set([".png", ".jpg", ".jpeg", ".gif", ".webp", ".ico"]);
 const localizedTermHex = [
   "776569746572",
@@ -79,6 +80,7 @@ function getTrackedFiles() {
     .split(/\r?\n/)
     .filter(Boolean)
     .filter((filePath) => !excludedTextFiles.has(filePath))
+    .filter((filePath) => !excludedPrefixes.some((p) => filePath.startsWith(p)))
     .filter((filePath) => !binaryExtensions.has(path.extname(filePath).toLowerCase()));
 }
 

@@ -155,15 +155,15 @@ for (const check of checks) {
 
 const vnc = checkVncStack();
 if (vnc.missing.length === 0 && vnc.noVncPath) {
-  console.log("✓ VNC stack: Xvfb, x11vnc, fluxbox, websockify present; noVNC at", vnc.noVncPath);
+  console.log("[OK] VNC stack: Xvfb, x11vnc, fluxbox, websockify present; noVNC at", vnc.noVncPath);
 } else {
-  console.log("✗ VNC stack incomplete");
+  console.log("[FAIL] VNC stack incomplete");
   if (vnc.missing.length) {
     console.log("  Missing binaries:", vnc.missing.join(", "));
     console.log("  Install: sudo apt install -y", ["xvfb", "x11vnc", "fluxbox", "websockify", "novnc"].join(" "));
   }
   if (!vnc.noVncPath) {
-    console.log("  noVNC assets not found under /usr/share/novnc — install `novnc` package");
+    console.log("  noVNC assets not found under /usr/share/novnc -- install `novnc` package");
   }
 }
 

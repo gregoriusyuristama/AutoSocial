@@ -36,7 +36,7 @@
       if (!bar.classList.contains("bg-slate-200")) bar.classList.add("bg-slate-200");
     });
     if (score < 0) {
-      strengthLabel.textContent = pw.value ? "Too short — minimum 8 characters." : "Minimum 8 characters.";
+      strengthLabel.textContent = pw.value ? "Too short -- minimum 8 characters." : "Minimum 8 characters.";
       strengthLabel.className = "mt-1.5 text-xs text-slate-500";
       return;
     }

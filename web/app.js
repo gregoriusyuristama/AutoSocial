@@ -60,7 +60,7 @@ async function loadWorkspaceSwitcher() {
         li.textContent = ws.label;
         if (ws.id === (data.activeWorkspaceId || active?.id)) {
           const check = document.createElement("span");
-          check.textContent = "✓";
+          check.textContent = "[OK]";
           check.className = "text-emerald-600";
           li.appendChild(check);
         }
@@ -105,7 +105,7 @@ async function loadWorkspaceSwitcher() {
 }
 
 const PLATFORM_LABEL = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" };
-const PLATFORM_ICON = { tiktok: "🎵", instagram: "📷", youtube: "▶" };
+const PLATFORM_ICON = { tiktok: "", instagram: "", youtube: ">" };
 
 function showToast(text, kind = "success") {
   const bg = kind === "error" ? "bg-rose-600" : "bg-emerald-600";
@@ -142,7 +142,7 @@ async function openConnectModal(platform, existingConnId, existingLabel) {
   labelInput.value = existingLabel || "";
   vncWrap.classList.add("hidden");
   saveBtn.disabled = true;
-  statusEl.textContent = "Starting virtual browser…";
+  statusEl.textContent = "Starting virtual browser...";
   modal.classList.remove("hidden");
 
   let connId = existingConnId;
@@ -188,7 +188,7 @@ async function openConnectModal(platform, existingConnId, existingLabel) {
   closeBtn.onclick = cancelBtn.onclick;
   saveBtn.onclick = async () => {
     saveBtn.disabled = true;
-    saveBtn.textContent = "Verifying…";
+    saveBtn.textContent = "Verifying...";
     const res = await fetch(`/api/connections/${connId}/save-session`, { method: "POST" }).then((r) => r.json());
     saveBtn.textContent = "Save Session";
     if (res.ok) {
@@ -257,8 +257,8 @@ async function renderConnections() {
         const li = document.createElement("li");
         li.className = "flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors";
         const status = conn.sessionSaved
-          ? '<span class="text-emerald-600">✓</span>'
-          : '<span class="text-amber-600">⚠</span>';
+          ? '<span class="text-emerald-600">[OK]</span>'
+          : '<span class="text-amber-600">!</span>';
         li.innerHTML = `<span>${escapeHtml(conn.label)} ${status}</span>`;
 
         const actions = document.createElement("div");
