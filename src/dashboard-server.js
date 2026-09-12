@@ -191,6 +191,7 @@ async function createServer() {
 
   app.use(createDashboardRequestGuard());
   app.use(express.static(path.join(__dirname, "..", "web")));
+  app.use("/partials", express.static(path.join(__dirname, "..", "web", "partials")));
 
   // TikTok endpoints (profile-aware)
 
