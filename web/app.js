@@ -104,6 +104,103 @@ async function loadWorkspaceSwitcher() {
   await refresh();
 }
 
+const PLATFORM_LABEL = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" };
+const PLATFORM_ICON = { tiktok: "🎵", instagram: "📷", youtube: "▶" };
+
+function openConnectModal(platform, connId, label) {
+  alert("Connect modal opens in Phase 6 (noVNC integration). Platform: " + platform);
+}
+
+async function renderConnections() {
+  const listEl = document.getElementById("connections-list");
+  if (!listEl) return;
+  let data;
+  try {
+    const res = await fetch("/api/connections");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    console.error("Failed to load connections", err);
+    listEl.innerHTML = '<div class="text-sm text-rose-600">Failed to load connections</div>';
+    return;
+  }
+
+  const grouped = { tiktok: [], instagram: [], youtube: [] };
+  for (const c of data.connections || []) {
+    if (grouped[c.platform]) grouped[c.platform].push(c);
+  }
+
+  listEl.innerHTML = "";
+  for (const platform of ["tiktok", "instagram", "youtube"]) {
+    const wrap = document.createElement("div");
+    wrap.className = "rounded-xl bg-slate-50 border border-slate-200 p-4 transition-all duration-300";
+
+    const header = document.createElement("div");
+    header.className = "flex items-center justify-between mb-2";
+    const heading = document.createElement("h3");
+    heading.className = "text-slate-900 font-semibold";
+    heading.textContent = `${PLATFORM_ICON[platform]} ${PLATFORM_LABEL[platform]}`;
+    header.appendChild(heading);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "text-sm text-emerald-700 hover:text-emerald-800 transition-colors font-medium";
+    addBtn.textContent = "+ Add";
+    addBtn.dataset.platform = platform;
+    addBtn.addEventListener("click", () => openConnectModal(platform));
+    header.appendChild(addBtn);
+    wrap.appendChild(header);
+
+    if (grouped[platform].length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "text-slate-500 text-sm";
+      empty.textContent = "No connections yet.";
+      wrap.appendChild(empty);
+    } else {
+      const ul = document.createElement("ul");
+      ul.className = "space-y-1";
+      for (const conn of grouped[platform]) {
+        const li = document.createElement("li");
+        li.className = "flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors";
+        const status = conn.sessionSaved
+          ? '<span class="text-emerald-600">✓</span>'
+          : '<span class="text-amber-600">⚠</span>';
+        li.innerHTML = `<span>${escapeHtml(conn.label)} ${status}</span>`;
+
+        const actions = document.createElement("div");
+        actions.className = "flex gap-2";
+
+        const reconnect = document.createElement("button");
+        reconnect.type = "button";
+        reconnect.className = "text-sm text-emerald-700 hover:text-emerald-800 transition-colors font-medium";
+        reconnect.textContent = conn.sessionSaved ? "Reconnect" : "Connect";
+        reconnect.addEventListener("click", () => openConnectModal(platform, conn.id, conn.label));
+        actions.appendChild(reconnect);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "text-sm text-rose-600 hover:text-rose-700 transition-colors font-medium";
+        del.textContent = "Delete";
+        del.addEventListener("click", async () => {
+          if (!confirm(`Delete ${conn.label}?`)) return;
+          try {
+            await fetch(`/api/connections/${conn.id}`, { method: "DELETE" });
+            await renderConnections();
+          } catch (err) {
+            console.error("Failed to delete connection", err);
+          }
+        });
+        actions.appendChild(del);
+
+        li.appendChild(actions);
+        ul.appendChild(li);
+      }
+      wrap.appendChild(ul);
+    }
+    listEl.appendChild(wrap);
+  }
+}
+
 document.addEventListener("DOMContentLoaded", () => {
   loadWorkspaceSwitcher();
   const logoutBtn = document.getElementById("logout-btn");
@@ -117,6 +214,16 @@ document.addEventListener("DOMContentLoaded", () => {
       window.location.href = "/auth/login";
     });
   }
+
+  const connectBtn = document.getElementById("connect-btn");
+  if (connectBtn) {
+    connectBtn.addEventListener("click", () => {
+      const platform = prompt("Platform? (tiktok/instagram/youtube)", "tiktok");
+      if (platform) openConnectModal(platform);
+    });
+  }
+
+  renderConnections();
 });
 
 const Router = {
