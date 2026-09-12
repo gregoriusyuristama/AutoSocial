@@ -27,6 +27,98 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+async function loadWorkspaceSwitcher() {
+  const slot = document.getElementById("workspace-switcher-slot");
+  if (!slot) return;
+  try {
+    const html = await (await fetch("/partials/workspace-switcher.html")).text();
+    slot.innerHTML = html;
+  } catch (err) {
+    console.error("Failed to load workspace switcher partial", err);
+    slot.innerHTML = '<span class="text-sm text-slate-500">Workspace error</span>';
+    return;
+  }
+
+  const btn = document.getElementById("ws-switcher-btn");
+  const menu = document.getElementById("ws-switcher-menu");
+  const label = document.getElementById("ws-switcher-label");
+  const list = document.getElementById("ws-switcher-list");
+  const newBtn = document.getElementById("ws-switcher-new");
+  if (!btn || !menu || !label || !list || !newBtn) return;
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/workspaces");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const active = data.workspaces.find((w) => w.id === data.activeWorkspaceId) || data.workspaces[0];
+      label.textContent = active ? active.label : "No workspace";
+      list.innerHTML = "";
+      for (const ws of data.workspaces) {
+        const li = document.createElement("li");
+        li.className = "px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex items-center justify-between transition-colors";
+        li.textContent = ws.label;
+        if (ws.id === (data.activeWorkspaceId || active?.id)) {
+          const check = document.createElement("span");
+          check.textContent = "✓";
+          check.className = "text-emerald-600";
+          li.appendChild(check);
+        }
+        li.addEventListener("click", async () => {
+          try {
+            await fetch(`/api/workspaces/${ws.id}/activate`, { method: "POST" });
+            window.location.reload();
+          } catch (err) {
+            console.error("Failed to activate workspace", err);
+          }
+        });
+        list.appendChild(li);
+      }
+    } catch (err) {
+      console.error("Failed to load workspaces", err);
+      label.textContent = "Workspace error";
+    }
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!btn.contains(e.target) && !menu.contains(e.target)) menu.classList.add("hidden");
+  });
+  newBtn.addEventListener("click", async () => {
+    const name = prompt("Workspace name?");
+    if (!name) return;
+    try {
+      await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label: name }),
+      });
+      await refresh();
+    } catch (err) {
+      console.error("Failed to create workspace", err);
+    }
+  });
+  await refresh();
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadWorkspaceSwitcher();
+  const logoutBtn = document.getElementById("logout-btn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch("/auth/logout", { method: "POST" });
+      } catch (err) {
+        console.error("Failed to logout cleanly", err);
+      }
+      window.location.href = "/auth/login";
+    });
+  }
+});
+
 const Router = {
   init() {
     const navItems = document.querySelectorAll(".nav-item");
