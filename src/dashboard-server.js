@@ -12,6 +12,7 @@ const { getDaemons, getAllStatus } = require("./daemon-registry");
 const { migrateQueueIfNeeded } = require("./migrate-queue");
 const { createStore: createWorkspaceStore } = require("./workspace-store");
 const { createStore: createConnectionStore } = require("./connection-store");
+const { createManager: createVncManager } = require("./vnc-session-manager");
 const { resolveConnection } = require("./connection-resolver");
 const { runMigration } = require("./migrate-to-workspaces");
 const { createDashboardRequestGuard } = require("./request-guard");
@@ -131,6 +132,23 @@ async function createServer() {
   const workspaceStore = createWorkspaceStore(path.join(process.cwd(), "data", "workspaces.json"));
   const connectionStore = createConnectionStore(path.join(process.cwd(), "data", "connections.json"));
 
+  const vncManager = createVncManager({
+    vncPortRangeStart: config.vncPortRangeStart,
+    vncPortRangeEnd: config.vncPortRangeEnd,
+    novncPortRangeStart: config.novncPortRangeStart,
+    novncPortRangeEnd: config.novncPortRangeEnd,
+    ttlSeconds: config.vncSessionTtlSeconds,
+    maxConcurrent: config.vncMaxConcurrent,
+    hostName: process.env.PUBLIC_HOSTNAME || "localhost",
+  });
+
+  const shutdownVnc = async (signal) => {
+    try { await vncManager.shutdownAll(); } catch (err) { console.error("[vnc] shutdown error", err); }
+    process.exit(0);
+  };
+  process.on("SIGINT", () => shutdownVnc("SIGINT"));
+  process.on("SIGTERM", () => shutdownVnc("SIGTERM"));
+
   // Seed first workspace if none exist (fresh install after auth setup)
   if ((await workspaceStore.list()).length === 0) {
     await workspaceStore.create("My Brand");
@@ -188,6 +206,7 @@ async function createServer() {
   app.locals.connectionStoreForCheck = connectionStore;
   app.use(buildWorkspaceRouter(workspaceStore));
   app.use(buildConnectionRouter(connectionStore, workspaceStore));
+  app.use(buildVncRouter(connectionStore, vncManager));
 
   app.use(createDashboardRequestGuard());
   app.use(express.static(path.join(__dirname, "..", "web")));
@@ -887,6 +906,74 @@ function buildConnectionRouter(connectionStore, workspaceStore) {
   return router;
 }
 
+function buildVncRouter(connectionStore, vncManager) {
+  const router = express.Router();
+
+  function resolveProfileDir(conn) {
+    return path.isAbsolute(conn.profileDir)
+      ? conn.profileDir
+      : path.join(process.cwd(), conn.profileDir);
+  }
+
+  router.post("/api/connections/:id/connect", async (req, res) => {
+    try {
+      const conn = await connectionStore.get(req.params.id);
+      if (!conn) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+      const info = await vncManager.spawn({
+        connectionId: conn.id,
+        profileDir: resolveProfileDir(conn),
+        platform: conn.platform,
+      });
+      res.json({ ok: true, ...info, connection: conn });
+    } catch (err) {
+      const map = { NO_FREE_PORT: 503, NO_FREE_DISPLAY: 503, MAX_CONCURRENT: 503 };
+      res.status(map[err.message] || 500).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.get("/api/connections/:id/vnc-status", async (req, res) => {
+    res.json({ ok: true, ...vncManager.status(req.params.id) });
+  });
+
+  router.post("/api/connections/:id/cancel", async (req, res) => {
+    await vncManager.tearDown(req.params.id);
+    res.json({ ok: true });
+  });
+
+  router.post("/api/connections/:id/save-session", async (req, res) => {
+    try {
+      const conn = await connectionStore.get(req.params.id);
+      if (!conn) return res.status(404).json({ ok: false, error: "NOT_FOUND" });
+      await vncManager.tearDown(req.params.id);
+      const { chromium } = require("playwright");
+      const profileDirAbs = resolveProfileDir(conn);
+      const ctx = await chromium.launchPersistentContext(profileDirAbs, { headless: true });
+      try {
+        const page = ctx.pages()[0] || await ctx.newPage();
+        const probeUrl = {
+          tiktok: "https://www.tiktok.com/tiktokstudio/upload",
+          instagram: "https://www.instagram.com/",
+          youtube: "https://studio.youtube.com/",
+        }[conn.platform];
+        await page.goto(probeUrl, { waitUntil: "domcontentloaded", timeout: 15000 });
+        const finalUrl = page.url();
+        const loggedIn = !/login|signin|accounts\.google\.com/i.test(finalUrl);
+        await ctx.close();
+        if (!loggedIn) return res.status(422).json({ ok: false, error: "NO_SESSION_COOKIES" });
+        const updated = await connectionStore.markSessionSaved(conn.id);
+        res.json({ ok: true, connection: updated });
+      } catch (probeErr) {
+        await ctx.close().catch(() => {});
+        throw probeErr;
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, error: err.message });
+    }
+  });
+
+  return router;
+}
+
 if (require.main === module) {
   createServer().catch((error) => {
     console.error(error);
@@ -897,3 +984,4 @@ if (require.main === module) {
 module.exports.buildAuthRouter = buildAuthRouter;
 module.exports.buildWorkspaceRouter = buildWorkspaceRouter;
 module.exports.buildConnectionRouter = buildConnectionRouter;
+module.exports.buildVncRouter = buildVncRouter;

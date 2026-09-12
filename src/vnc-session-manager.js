@@ -70,21 +70,34 @@ function createManager(opts) {
 
     let browserContext = null;
     if (launchBrowser) {
-      const { chromium } = require("playwright");
-      await fs.mkdir(profileDir, { recursive: true });
-      browserContext = await chromium.launchPersistentContext(profileDir, {
-        headless: false,
-        viewport: { width: 1400, height: 1000 },
-        env: { ...process.env, DISPLAY: `:${display}` },
-        args: ["--disable-blink-features=AutomationControlled"],
-      });
-      const page = browserContext.pages()[0] || await browserContext.newPage();
-      const startUrl = {
-        tiktok: "https://www.tiktok.com/login",
-        instagram: "https://www.instagram.com/accounts/login/",
-        youtube: "https://accounts.google.com/",
-      }[platform] || "about:blank";
-      page.goto(startUrl).catch(() => {});
+      try {
+        const { chromium } = require("playwright");
+        await fs.mkdir(profileDir, { recursive: true });
+        browserContext = await chromium.launchPersistentContext(profileDir, {
+          headless: false,
+          viewport: { width: 1400, height: 1000 },
+          env: { ...process.env, DISPLAY: `:${display}` },
+          args: ["--disable-blink-features=AutomationControlled"],
+        });
+        const page = browserContext.pages()[0] || await browserContext.newPage();
+        const startUrl = {
+          tiktok: "https://www.tiktok.com/login",
+          instagram: "https://www.instagram.com/accounts/login/",
+          youtube: "https://accounts.google.com/",
+        }[platform] || "about:blank";
+        page.goto(startUrl).catch(() => {});
+      } catch (err) {
+        // Browser launch failed — kill already-spawned children before rethrowing.
+        // Session is not yet registered, so tearDown(connectionId) would find nothing.
+        for (const proc of Object.values(children)) {
+          try { proc.kill("SIGTERM"); } catch {}
+        }
+        await new Promise((r) => setTimeout(r, 200));
+        for (const proc of Object.values(children)) {
+          try { proc.kill("SIGKILL"); } catch {}
+        }
+        throw err;
+      }
     }
 
     const expiryTimer = setTimeout(() => tearDown(connectionId), ttlSeconds * 1000);
