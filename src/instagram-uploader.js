@@ -15,10 +15,10 @@ const REALISTIC_USER_AGENT =
 let loginSessionContext = null;
 let loginSessionAccountId = null;
 
-async function openPersistentContext(accountId) {
-  const profileDir = await getPlatformProfileDir("instagram", accountId);
-  await fs.mkdir(profileDir, { recursive: true });
-  return chromium.launchPersistentContext(profileDir, {
+async function openPersistentContextForProfile(profileDir) {
+  const absolute = path.isAbsolute(profileDir) ? profileDir : path.join(process.cwd(), profileDir);
+  await fs.mkdir(absolute, { recursive: true });
+  return chromium.launchPersistentContext(absolute, {
     headless: config.headless,
     viewport: { width: 1400, height: 1000 },
     userAgent: REALISTIC_USER_AGENT,
@@ -32,6 +32,11 @@ async function openPersistentContext(accountId) {
       "--disable-extensions",
     ],
   });
+}
+
+async function openPersistentContext(accountId) {
+  const profileDir = await getPlatformProfileDir("instagram", accountId);
+  return openPersistentContextForProfile(profileDir);
 }
 
 /**
@@ -92,6 +97,33 @@ async function startLoginSession() {
   });
 
   // Navigate to the homepage first; less suspicious than going straight to /create/.
+  await navigateWithRetry(page, "https://www.instagram.com/");
+  return { ok: true, alreadyOpen: false, url: page.url() };
+}
+
+async function startLoginSessionForConnection(connection) {
+  if (loginSessionContext && loginSessionAccountId !== connection.id) {
+    const previous = loginSessionContext;
+    loginSessionContext = null;
+    loginSessionAccountId = null;
+    await previous.close().catch(() => { });
+  }
+
+  if (loginSessionContext) {
+    return { ok: true, alreadyOpen: true };
+  }
+
+  const context = await openPersistentContextForProfile(connection.profileDir);
+  const page = context.pages()[0] || (await context.newPage());
+  loginSessionContext = context;
+  loginSessionAccountId = connection.id;
+  context.on("close", () => {
+    if (loginSessionContext === context) {
+      loginSessionContext = null;
+      loginSessionAccountId = null;
+    }
+  });
+
   await navigateWithRetry(page, "https://www.instagram.com/");
   return { ok: true, alreadyOpen: false, url: page.url() };
 }
@@ -317,9 +349,8 @@ async function waitForPostConfirmation(page, startedUrl) {
   return { ok: false, reason: "No reliable Instagram post confirmation within timeout." };
 }
 
-async function uploadVideo({ videoPath, caption, accountId }) {
+async function postWithContext(context, { videoPath, caption }) {
   const absoluteVideoPath = path.resolve(videoPath);
-  const context = await openPersistentContext(accountId);
   const page = context.pages()[0] || (await context.newPage());
   let closeHoldMs = 0;
 
@@ -368,6 +399,23 @@ async function uploadVideo({ videoPath, caption, accountId }) {
       console.log(`Holding browser for ${closeHoldMs / 1000}s before closing...`);
       await page.waitForTimeout(closeHoldMs).catch(() => { });
     }
+  }
+}
+
+async function uploadVideo({ videoPath, caption, accountId }) {
+  const context = await openPersistentContext(accountId);
+  try {
+    return await postWithContext(context, { videoPath, caption });
+  } finally {
+    await context.close();
+  }
+}
+
+async function postForConnection(connection, spec) {
+  const context = await openPersistentContextForProfile(connection.profileDir);
+  try {
+    return await postWithContext(context, spec);
+  } finally {
     await context.close();
   }
 }
@@ -377,5 +425,8 @@ module.exports = {
   startLoginSession,
   getLoginSessionStatus,
   closeLoginSession,
+  openPersistentContextForProfile,
+  startLoginSessionForConnection,
+  postForConnection,
 };
 

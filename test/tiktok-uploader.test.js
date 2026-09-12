@@ -1,5 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const { chromium } = require("playwright");
 
 const { _private } = require("../src/tiktok-uploader");
 
@@ -117,4 +118,25 @@ test("TikTok secondary confirm terms reject plain Post and sidebar Posts", () =>
 
   assert.equal(getPublishCandidateScore(sidebar, secondaryTerms), -1);
   assert.equal(getPublishCandidateScore(bottomButton, secondaryTerms), -1);
+});
+
+test("startLoginSessionForConnection uses connection.profileDir", async () => {
+  const original = chromium.launchPersistentContext;
+  let calledWith = null;
+  chromium.launchPersistentContext = async (dir) => {
+    calledWith = dir;
+    return {
+      pages: () => [],
+      newPage: async () => ({ goto: async () => {}, url: () => "https://example" }),
+      on: () => {},
+      close: async () => {},
+    };
+  };
+  try {
+    const uploader = require("../src/tiktok-uploader");
+    await uploader.startLoginSessionForConnection({ id: "conn_z", profileDir: ".profiles/ws/conn_z/tiktok" });
+    assert.match(calledWith, /\.profiles\/ws\/conn_z\/tiktok$/);
+  } finally {
+    chromium.launchPersistentContext = original;
+  }
 });

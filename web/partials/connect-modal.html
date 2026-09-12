@@ -1,0 +1,32 @@
+<div id="connect-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-md">
+  <div class="relative w-full max-w-3xl rounded-2xl bg-white border border-slate-200 shadow-2xl overflow-hidden transition-all duration-300">
+    <header class="flex items-center justify-between px-6 py-4 border-b border-slate-200">
+      <h2 id="connect-modal-title" class="text-lg font-semibold text-slate-900">Connect account</h2>
+      <button id="connect-modal-close" aria-label="Close"
+              class="text-slate-500 hover:text-slate-900 transition-colors focus:outline-none focus:ring-2 focus:ring-emerald-500 rounded-lg">x</button>
+    </header>
+    <div class="p-6 space-y-4">
+      <div>
+        <label class="block text-sm font-medium text-slate-700 mb-1.5" for="connect-label">Label</label>
+        <input id="connect-label" type="text" placeholder="e.g. @fitbrand_id"
+               class="w-full rounded-xl bg-white border border-slate-300 px-4 py-2.5 text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 transition-all duration-300" />
+      </div>
+      <div id="connect-status" aria-live="polite" class="text-sm text-slate-500">Waiting to start...</div>
+      <div id="connect-vnc-wrap" class="hidden">
+        <div class="aspect-video rounded-xl overflow-hidden border border-slate-200 bg-slate-900">
+          <iframe id="connect-vnc-iframe" class="w-full h-full" allow="clipboard-read; clipboard-write" title="Virtual browser"></iframe>
+        </div>
+        <div class="mt-3 flex justify-end">
+          <span id="connect-countdown" class="inline-flex items-center gap-2 rounded-full bg-amber-100 text-amber-800 px-3 py-1 text-xs font-medium">Session expires in ...</span>
+        </div>
+      </div>
+    </div>
+    <footer class="flex justify-end gap-2 px-6 py-4 border-t border-slate-200">
+      <button id="connect-cancel-btn"
+              class="rounded-xl bg-white border border-slate-200 px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500">Cancel</button>
+      <button id="connect-save-btn"
+              class="rounded-xl bg-emerald-600 hover:bg-emerald-700 hover:-translate-y-0.5 text-white text-sm font-medium px-4 py-2 shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
+              disabled>Save Session</button>
+    </footer>
+  </div>
+</div>

@@ -1,0 +1,15 @@
+<div id="workspace-switcher" class="relative inline-block text-left">
+  <button id="ws-switcher-btn" type="button" aria-haspopup="listbox" aria-label="Switch workspace"
+          class="inline-flex items-center gap-2 rounded-xl bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 hover:-translate-y-0.5 transition-all duration-300 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500">
+    <span id="ws-switcher-label" class="font-medium text-slate-900">Loading...</span>
+    <svg class="w-4 h-4 text-slate-500" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M5.5 7.5l4.5 4.5 4.5-4.5z"/></svg>
+  </button>
+  <div id="ws-switcher-menu"
+       class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-white border border-slate-200 shadow-lg z-40 transition-all duration-300">
+    <ul id="ws-switcher-list" class="py-2 max-h-72 overflow-y-auto" role="listbox"></ul>
+    <div class="border-t border-slate-200 py-2">
+      <button id="ws-switcher-new" class="w-full text-left px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors">+ New workspace</button>
+      <button id="ws-switcher-manage" class="w-full text-left px-4 py-2 text-sm text-slate-500 hover:bg-slate-50 transition-colors">Manage workspaces...</button>
+    </div>
+  </div>
+</div>

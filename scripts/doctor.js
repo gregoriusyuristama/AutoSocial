@@ -116,6 +116,26 @@ function checkEnvExample() {
   );
 }
 
+const { execSync } = require("node:child_process");
+
+function hasBinary(name) {
+  try {
+    execSync(`command -v ${name}`, { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function checkVncStack() {
+  const required = ["Xvfb", "x11vnc", "fluxbox", "websockify"];
+  const missing = required.filter((bin) => !hasBinary(bin));
+  const noVncPath = ["/usr/share/novnc", "/usr/share/novnc-common"].find((p) => {
+    try { require("node:fs").accessSync(p); return true; } catch { return false; }
+  });
+  return { missing, noVncPath: noVncPath || null };
+}
+
 checkNode();
 checkNpm();
 checkFfmpeg();
@@ -131,6 +151,20 @@ const label = {
 
 for (const check of checks) {
   console.log(`[${label[check.status]}] ${check.name}: ${check.detail}`);
+}
+
+const vnc = checkVncStack();
+if (vnc.missing.length === 0 && vnc.noVncPath) {
+  console.log("[OK] VNC stack: Xvfb, x11vnc, fluxbox, websockify present; noVNC at", vnc.noVncPath);
+} else {
+  console.log("[FAIL] VNC stack incomplete");
+  if (vnc.missing.length) {
+    console.log("  Missing binaries:", vnc.missing.join(", "));
+    console.log("  Install: sudo apt install -y", ["xvfb", "x11vnc", "fluxbox", "websockify", "novnc"].join(" "));
+  }
+  if (!vnc.noVncPath) {
+    console.log("  noVNC assets not found under /usr/share/novnc -- install `novnc` package");
+  }
 }
 
 const failed = checks.filter((check) => check.status === "fail");

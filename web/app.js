@@ -27,6 +27,299 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+async function loadWorkspaceSwitcher() {
+  const slot = document.getElementById("workspace-switcher-slot");
+  if (!slot) return;
+  try {
+    const html = await (await fetch("/partials/workspace-switcher.html")).text();
+    slot.innerHTML = html;
+  } catch (err) {
+    console.error("Failed to load workspace switcher partial", err);
+    slot.innerHTML = '<span class="text-sm text-slate-500">Workspace error</span>';
+    return;
+  }
+
+  const btn = document.getElementById("ws-switcher-btn");
+  const menu = document.getElementById("ws-switcher-menu");
+  const label = document.getElementById("ws-switcher-label");
+  const list = document.getElementById("ws-switcher-list");
+  const newBtn = document.getElementById("ws-switcher-new");
+  if (!btn || !menu || !label || !list || !newBtn) return;
+
+  async function refresh() {
+    try {
+      const res = await fetch("/api/workspaces");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      const active = data.workspaces.find((w) => w.id === data.activeWorkspaceId) || data.workspaces[0];
+      label.textContent = active ? active.label : "No workspace";
+      list.innerHTML = "";
+      for (const ws of data.workspaces) {
+        const li = document.createElement("li");
+        li.className = "px-4 py-2 text-sm text-slate-700 hover:bg-slate-50 cursor-pointer flex items-center justify-between transition-colors";
+        li.textContent = ws.label;
+        if (ws.id === (data.activeWorkspaceId || active?.id)) {
+          const check = document.createElement("span");
+          check.textContent = "[OK]";
+          check.className = "text-emerald-600";
+          li.appendChild(check);
+        }
+        li.addEventListener("click", async () => {
+          try {
+            await fetch(`/api/workspaces/${ws.id}/activate`, { method: "POST" });
+            window.location.reload();
+          } catch (err) {
+            console.error("Failed to activate workspace", err);
+          }
+        });
+        list.appendChild(li);
+      }
+    } catch (err) {
+      console.error("Failed to load workspaces", err);
+      label.textContent = "Workspace error";
+    }
+  }
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("hidden");
+  });
+  document.addEventListener("click", (e) => {
+    if (!btn.contains(e.target) && !menu.contains(e.target)) menu.classList.add("hidden");
+  });
+  newBtn.addEventListener("click", async () => {
+    const name = prompt("Workspace name?");
+    if (!name) return;
+    try {
+      await fetch("/api/workspaces", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label: name }),
+      });
+      await refresh();
+    } catch (err) {
+      console.error("Failed to create workspace", err);
+    }
+  });
+  await refresh();
+}
+
+const PLATFORM_LABEL = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" };
+const PLATFORM_ICON = { tiktok: "", instagram: "", youtube: ">" };
+
+function showToast(text, kind = "success") {
+  const bg = kind === "error" ? "bg-rose-600" : "bg-emerald-600";
+  const el = document.createElement("div");
+  el.className = `fixed bottom-6 right-6 z-[60] px-4 py-2 rounded-xl text-white shadow-lg transition-all duration-300 opacity-0 ${bg}`;
+  el.textContent = text;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.classList.remove("opacity-0"); el.classList.add("opacity-100"); });
+  setTimeout(() => {
+    el.classList.remove("opacity-100");
+    el.classList.add("opacity-0");
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+async function openConnectModal(platform, existingConnId, existingLabel) {
+  const slot = document.getElementById("connect-modal-slot");
+  if (!slot.dataset.loaded) {
+    slot.innerHTML = await (await fetch("/partials/connect-modal.html")).text();
+    slot.dataset.loaded = "1";
+  }
+  const modal = document.getElementById("connect-modal");
+  const title = document.getElementById("connect-modal-title");
+  const labelInput = document.getElementById("connect-label");
+  const statusEl = document.getElementById("connect-status");
+  const vncWrap = document.getElementById("connect-vnc-wrap");
+  const iframe = document.getElementById("connect-vnc-iframe");
+  const countdown = document.getElementById("connect-countdown");
+  const saveBtn = document.getElementById("connect-save-btn");
+  const cancelBtn = document.getElementById("connect-cancel-btn");
+  const closeBtn = document.getElementById("connect-modal-close");
+
+  title.textContent = `Connect ${platform} account`;
+  labelInput.value = existingLabel || "";
+  vncWrap.classList.add("hidden");
+  saveBtn.disabled = true;
+  statusEl.textContent = "Starting virtual browser...";
+  modal.classList.remove("hidden");
+
+  let connId = existingConnId;
+  if (!connId) {
+    const label = labelInput.value.trim() || `${platform} account`;
+    const created = await fetch("/api/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ platform, label }),
+    }).then((r) => r.json());
+    if (!created.ok) { statusEl.textContent = created.error; return; }
+    connId = created.connection.id;
+  }
+
+  const spawn = await fetch(`/api/connections/${connId}/connect`, { method: "POST" }).then((r) => r.json());
+  if (!spawn.ok) { statusEl.textContent = spawn.error; return; }
+  statusEl.textContent = "Log in inside the virtual browser, then click Save Session.";
+  iframe.src = spawn.novncHttpUrl;
+  vncWrap.classList.remove("hidden");
+  saveBtn.disabled = false;
+
+  let expiresAt = new Date(spawn.expiresAt).getTime();
+  const tick = setInterval(() => {
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) {
+      countdown.textContent = "Session expired.";
+      clearInterval(tick);
+      saveBtn.disabled = true;
+      return;
+    }
+    const mm = String(Math.floor(remainingMs / 60000)).padStart(2, "0");
+    const ss = String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0");
+    countdown.textContent = `Session expires in ${mm}:${ss}`;
+  }, 1000);
+
+  function cleanup() {
+    clearInterval(tick);
+    modal.classList.add("hidden");
+    iframe.src = "about:blank";
+  }
+
+  cancelBtn.onclick = async () => { await fetch(`/api/connections/${connId}/cancel`, { method: "POST" }); cleanup(); await renderConnections(); };
+  closeBtn.onclick = cancelBtn.onclick;
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Verifying...";
+    const res = await fetch(`/api/connections/${connId}/save-session`, { method: "POST" }).then((r) => r.json());
+    saveBtn.textContent = "Save Session";
+    if (res.ok) {
+      cleanup();
+      await renderConnections();
+      showToast("Session saved.");
+    } else if (res.error === "NO_SESSION_COOKIES") {
+      statusEl.textContent = "Login not detected inside the virtual browser. Complete login and try again.";
+      saveBtn.disabled = false;
+    } else {
+      statusEl.textContent = res.error || "Save failed.";
+      saveBtn.disabled = false;
+    }
+  };
+}
+
+async function renderConnections() {
+  const listEl = document.getElementById("connections-list");
+  if (!listEl) return;
+  let data;
+  try {
+    const res = await fetch("/api/connections");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    data = await res.json();
+  } catch (err) {
+    console.error("Failed to load connections", err);
+    listEl.innerHTML = '<div class="text-sm text-rose-600">Failed to load connections</div>';
+    return;
+  }
+
+  const grouped = { tiktok: [], instagram: [], youtube: [] };
+  for (const c of data.connections || []) {
+    if (grouped[c.platform]) grouped[c.platform].push(c);
+  }
+
+  listEl.innerHTML = "";
+  for (const platform of ["tiktok", "instagram", "youtube"]) {
+    const wrap = document.createElement("div");
+    wrap.className = "rounded-xl bg-slate-50 border border-slate-200 p-4 transition-all duration-300";
+
+    const header = document.createElement("div");
+    header.className = "flex items-center justify-between mb-2";
+    const heading = document.createElement("h3");
+    heading.className = "text-slate-900 font-semibold";
+    heading.textContent = `${PLATFORM_ICON[platform]} ${PLATFORM_LABEL[platform]}`;
+    header.appendChild(heading);
+
+    const addBtn = document.createElement("button");
+    addBtn.type = "button";
+    addBtn.className = "text-sm text-emerald-700 hover:text-emerald-800 transition-colors font-medium";
+    addBtn.textContent = "+ Add";
+    addBtn.dataset.platform = platform;
+    addBtn.addEventListener("click", () => openConnectModal(platform));
+    header.appendChild(addBtn);
+    wrap.appendChild(header);
+
+    if (grouped[platform].length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "text-slate-500 text-sm";
+      empty.textContent = "No connections yet.";
+      wrap.appendChild(empty);
+    } else {
+      const ul = document.createElement("ul");
+      ul.className = "space-y-1";
+      for (const conn of grouped[platform]) {
+        const li = document.createElement("li");
+        li.className = "flex items-center justify-between rounded-lg bg-white border border-slate-200 px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 transition-colors";
+        const status = conn.sessionSaved
+          ? '<span class="text-emerald-600">[OK]</span>'
+          : '<span class="text-amber-600">!</span>';
+        li.innerHTML = `<span>${escapeHtml(conn.label)} ${status}</span>`;
+
+        const actions = document.createElement("div");
+        actions.className = "flex gap-2";
+
+        const reconnect = document.createElement("button");
+        reconnect.type = "button";
+        reconnect.className = "text-sm text-emerald-700 hover:text-emerald-800 transition-colors font-medium";
+        reconnect.textContent = conn.sessionSaved ? "Reconnect" : "Connect";
+        reconnect.addEventListener("click", () => openConnectModal(platform, conn.id, conn.label));
+        actions.appendChild(reconnect);
+
+        const del = document.createElement("button");
+        del.type = "button";
+        del.className = "text-sm text-rose-600 hover:text-rose-700 transition-colors font-medium";
+        del.textContent = "Delete";
+        del.addEventListener("click", async () => {
+          if (!confirm(`Delete ${conn.label}?`)) return;
+          try {
+            await fetch(`/api/connections/${conn.id}`, { method: "DELETE" });
+            await renderConnections();
+          } catch (err) {
+            console.error("Failed to delete connection", err);
+          }
+        });
+        actions.appendChild(del);
+
+        li.appendChild(actions);
+        ul.appendChild(li);
+      }
+      wrap.appendChild(ul);
+    }
+    listEl.appendChild(wrap);
+  }
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  loadWorkspaceSwitcher();
+  const logoutBtn = document.getElementById("logout-btn");
+  if (logoutBtn) {
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch("/auth/logout", { method: "POST" });
+      } catch (err) {
+        console.error("Failed to logout cleanly", err);
+      }
+      window.location.href = "/auth/login";
+    });
+  }
+
+  const connectBtn = document.getElementById("connect-btn");
+  if (connectBtn) {
+    connectBtn.addEventListener("click", () => {
+      const platform = prompt("Platform? (tiktok/instagram/youtube)", "tiktok");
+      if (platform) openConnectModal(platform);
+    });
+  }
+
+  renderConnections();
+});
+
 const Router = {
   init() {
     const navItems = document.querySelectorAll(".nav-item");

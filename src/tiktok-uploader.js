@@ -12,16 +12,21 @@ const {
 let loginSessionContext = null;
 let loginSessionAccountId = null;
 
-async function openPersistentContext(accountId) {
-  const profileDir = await getPlatformProfileDir("tiktok", accountId);
-  await fs.mkdir(profileDir, { recursive: true });
-  return chromium.launchPersistentContext(profileDir, {
+async function openPersistentContextForProfile(profileDir) {
+  const absolute = path.isAbsolute(profileDir) ? profileDir : path.join(process.cwd(), profileDir);
+  await fs.mkdir(absolute, { recursive: true });
+  return chromium.launchPersistentContext(absolute, {
     headless: config.headless,
     viewport: { width: 1400, height: 1000 },
     locale: config.browserLocale,
     timezoneId: config.timezone,
     args: ["--disable-blink-features=AutomationControlled"],
   });
+}
+
+async function openPersistentContext(accountId) {
+  const profileDir = await getPlatformProfileDir("tiktok", accountId);
+  return openPersistentContextForProfile(profileDir);
 }
 
 async function gotoUploadPage(page) {
@@ -1159,6 +1164,33 @@ async function startLoginSession() {
   return { ok: true, alreadyOpen: false, url: page.url() };
 }
 
+async function startLoginSessionForConnection(connection) {
+  if (loginSessionContext && loginSessionAccountId !== connection.id) {
+    const previous = loginSessionContext;
+    loginSessionContext = null;
+    loginSessionAccountId = null;
+    await previous.close().catch(() => { });
+  }
+
+  if (loginSessionContext) {
+    return { ok: true, alreadyOpen: true };
+  }
+
+  const context = await openPersistentContextForProfile(connection.profileDir);
+  const page = context.pages()[0] || (await context.newPage());
+  loginSessionContext = context;
+  loginSessionAccountId = connection.id;
+  context.on("close", () => {
+    if (loginSessionContext === context) {
+      loginSessionContext = null;
+      loginSessionAccountId = null;
+    }
+  });
+  await gotoUploadPage(page);
+
+  return { ok: true, alreadyOpen: false, url: page.url() };
+}
+
 async function getLoginSessionStatus() {
   const activeAccount = await getActiveAccount();
   const saved = await hasSavedPlatformSession("tiktok", activeAccount.id);
@@ -1197,9 +1229,8 @@ async function startLoginSessionCli() {
   });
 }
 
-async function uploadVideo({ videoPath, caption, source, accountId }) {
+async function postWithContext(context, { videoPath, caption, source }) {
   const absoluteVideoPath = path.resolve(videoPath);
-  const context = await openPersistentContext(accountId);
   const page = context.pages()[0] || (await context.newPage());
   let closeHoldMs = 0;
   let publishResponseTracker = null;
@@ -1247,6 +1278,23 @@ async function uploadVideo({ videoPath, caption, source, accountId }) {
       publishResponseTracker.dispose();
     }
     await holdBrowserBeforeClose(page, closeHoldMs, "post-finalization");
+  }
+}
+
+async function uploadVideo({ videoPath, caption, source, accountId }) {
+  const context = await openPersistentContext(accountId);
+  try {
+    return await postWithContext(context, { videoPath, caption, source });
+  } finally {
+    await context.close();
+  }
+}
+
+async function postForConnection(connection, spec) {
+  const context = await openPersistentContextForProfile(connection.profileDir);
+  try {
+    return await postWithContext(context, spec);
+  } finally {
     await context.close();
   }
 }
@@ -1257,6 +1305,9 @@ module.exports = {
   getLoginSessionStatus,
   closeLoginSession,
   uploadVideo,
+  openPersistentContextForProfile,
+  startLoginSessionForConnection,
+  postForConnection,
   _private: {
     getPublishCandidateScore,
     isLikelyPublishCandidateInfo,
