@@ -14,7 +14,8 @@ async function withServer(store, fn) {
   app.use(express.json());
   const cookieSession = require("cookie-session");
   app.use(cookieSession({ name: "s", keys: ["testkey"], maxAge: 3600e3 }));
-  app.use(buildAuthRouter(store));
+  const workspaceStore = { getActiveId: async () => null };
+  app.use(buildAuthRouter(store, workspaceStore));
   const server = app.listen(0);
   try { await fn(server.address().port); }
   finally { server.close(); }

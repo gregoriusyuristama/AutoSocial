@@ -10,6 +10,9 @@ const { AutoDownloadController } = require("./autodownload-controller");
 const { ProfileDownloadController } = require("./profile-download-controller");
 const { getDaemons, getAllStatus } = require("./daemon-registry");
 const { migrateQueueIfNeeded } = require("./migrate-queue");
+const { createStore: createWorkspaceStore } = require("./workspace-store");
+const { createStore: createConnectionStore } = require("./connection-store");
+const { runMigration } = require("./migrate-to-workspaces");
 const { createDashboardRequestGuard } = require("./request-guard");
 const { buildSetupHealth, getAllowedSetupFolderPath } = require("./setup-health");
 const {
@@ -115,6 +118,20 @@ async function createServer() {
   // Run migration from old flat queue layout to per-profile structure
   await migrateQueueIfNeeded();
 
+  // Migrate legacy .profiles/default to workspace layout, then wire stores
+  const migrationResult = await runMigration({ projectRoot: process.cwd() });
+  if (migrationResult.migrated) {
+    console.log(`[migration] ${migrationResult.connectionCount} connections migrated into ${migrationResult.workspaceId}`);
+  }
+
+  const workspaceStore = createWorkspaceStore(path.join(process.cwd(), "data", "workspaces.json"));
+  const connectionStore = createConnectionStore(path.join(process.cwd(), "data", "connections.json"));
+
+  // Seed first workspace if none exist (fresh install after auth setup)
+  if ((await workspaceStore.list()).length === 0) {
+    await workspaceStore.create("My Brand");
+  }
+
   // Ensure dirs for all existing accounts
   const allAccounts = await getAllAccounts();
   for (const acct of allAccounts) {
@@ -160,7 +177,7 @@ async function createServer() {
     sameSite: "lax",
   }));
 
-  app.use(buildAuthRouter(authStore));
+  app.use(buildAuthRouter(authStore, workspaceStore));
   app.use("/auth", express.static(path.join(__dirname, "auth"), { extensions: ["html"] }));
   app.use(requireAuth);
 
@@ -670,7 +687,7 @@ async function createServer() {
   });
 }
 
-function buildAuthRouter(authStore) {
+function buildAuthRouter(authStore, workspaceStore) {
   const router = express.Router();
 
   router.get("/auth/setup", async (req, res) => {
@@ -700,6 +717,7 @@ function buildAuthRouter(authStore) {
     const ok = await authStore.verifyCredentials(username, password);
     if (!ok) return res.status(401).json({ ok: false, error: "INVALID_CREDENTIALS" });
     req.session.userId = "admin";
+    req.session.activeWorkspaceId = await workspaceStore.getActiveId();
     const back = typeof req.body.return === "string" ? req.body.return : "/";
     return res.redirect(back);
   });
