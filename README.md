@@ -6,11 +6,12 @@
 
 AutoSocial Studio is a local, multi-account automation dashboard for short-form
 video workflows across TikTok, Instagram, and YouTube. It combines a local
-Express dashboard, Playwright-powered upload flows, per-account queues,
-schedulers, yt-dlp downloader utilities, and an FFmpeg-based video uniquifier.
+Express dashboard, password authentication, Playwright-powered upload flows,
+isolated noVNC platform login over LAN, per-workspace queues, schedulers,
+yt-dlp downloader utilities, and an FFmpeg-based video uniquifier.
 
-This project is built for a local workstation. It is not a hosted SaaS app and
-does not include user authentication.
+This project is built for local workstations and private LAN servers. It includes
+single-admin authentication and virtual browser streaming for remote management.
 
 ![AutoSocial Studio dashboard](docs/assets/dashboard-overview.png)
 
@@ -39,11 +40,14 @@ local control plane.
 
 ## Features
 
-- Manage multiple brands/accounts with isolated queues and browser sessions.
+- Protect dashboard access with single-admin authentication (bcrypt + session cookies).
+- Organize accounts into flat workspaces with top-right switcher support.
+- Connect multiple accounts per platform (TikTok, Instagram, YouTube).
+- Connect accounts on headless Linux servers via isolated noVNC virtual browser sessions.
 - Use the First-Run Setup page to verify local dependencies, login sessions,
   and queue folders.
 - Post queued videos to TikTok, Instagram, and YouTube.
-- Persist Playwright login sessions under `.profiles/<account>/<platform>`.
+- Persist Playwright login sessions under `.profiles/<workspace>/<connection>/<platform>`.
 - Schedule posts with cron expressions, daily times, or instant-post mode.
 - Download recent TikTok videos with yt-dlp and fan them out into queues.
 - Scan/download TikTok profiles into `autodownload/profile_downloads`.
@@ -56,6 +60,8 @@ local control plane.
 - npm
 - Playwright Chromium
 - FFmpeg and ffprobe in `PATH`
+- For Linux servers (noVNC platform connect): `xvfb`, `x11vnc`, `fluxbox`, `websockify`, `novnc`
+  (install with `sudo bash scripts/install-system-deps.sh`)
 - Optional: `yt-dlp.exe` in `autodownload/` for downloader features
 
 Windows is the primary target for the bundled `yt-dlp.exe` workflow, but the
@@ -114,26 +120,33 @@ DEFAULT_CAPTION="#mybrand #shorts"
 The sample config ships without a default caption, watch channel, logo, or
 sound query. Set those in `.env` or in the dashboard for your own workflow.
 
-## Dashboard Security
+## Dashboard Security and Authentication
 
-The dashboard binds to `127.0.0.1` by default and has no authentication layer.
-Keep it local.
+AutoSocial includes a built-in authentication layer to protect your dashboard
+when accessed on a local network.
 
-Mutating dashboard requests include a same-origin guard so random websites
-cannot blindly trigger local dashboard actions through the browser.
+- **First-Run Setup**: On first launch without an existing `data/auth.json`, the
+  dashboard directs you to `/auth/setup` to create an admin account.
+- **Session Protection**: Authenticated sessions use signed `cookie-session`
+  cookies gated by `SESSION_SECRET` in `.env`.
+- **Password Reset**: Local-only password reset is available at `/auth/reset`;
+  one-time recovery tokens are printed directly to the server terminal.
+- **CSRF Guard**: Mutating dashboard requests include a same-origin guard so
+  unauthorized websites cannot blindly trigger local automation controls.
 
-Binding to a non-local address is blocked unless `DASHBOARD_ALLOW_REMOTE=true`
-is set. Only use that on a trusted network and only if you understand that
-anyone who can reach the dashboard can operate the local automation controls.
+See [SECURITY.md](SECURITY.md) and [SETUP.md](SETUP.md) for more details.
 
-See [SECURITY.md](SECURITY.md) for more details.
+## Platform Connection (noVNC Virtual Browser)
 
-## First-Time Login
+Open the dashboard, go to `Accounts`, and click `+ Connect Account` for TikTok,
+Instagram, or YouTube.
 
-Open the dashboard, go to `Accounts`, and start a login session for each
-platform you want to use. Sessions are stored on disk and reused between runs.
+On headless Linux servers or LAN setups, AutoSocial launches an isolated virtual
+browser (Xvfb + fluxbox + Chromium) streamed directly into the dashboard via
+noVNC. Log into your account inside the modal, click `Save Session`, and your
+authenticated session is safely saved to disk under `.profiles/` for automation.
 
-The CLI `login` command is still TikTok-specific:
+The CLI `login` command is still available for local headful TikTok login:
 
 ```bash
 npm run login
