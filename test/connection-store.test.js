@@ -20,7 +20,7 @@ test("create emits id + profileDir keyed by workspace", async () => {
     const conn = await store.create({ workspaceId: "ws_a", platform: "tiktok", label: "@fit" });
     assert.match(conn.id, /^conn_[a-f0-9]{12}$/);
     assert.equal(conn.platform, "tiktok");
-    assert.equal(conn.profileDir, `.profiles/ws_a/${conn.id}`);
+    assert.equal(conn.profileDir, `.profiles/ws_a/${conn.id}/tiktok`);
     assert.equal(conn.sessionSaved, false);
   });
 });

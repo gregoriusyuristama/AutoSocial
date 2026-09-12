@@ -44,12 +44,12 @@ function createStore(filePath, opts = {}) {
         workspaceId,
         platform,
         label: String(label || `${platform} account`).slice(0, 80),
-        profileDir: path.posix.join(profileRoot, workspaceId, ""),
+        profileDir: null,
         connectedAt: null,
         sessionSaved: false,
         lastVerifiedAt: null,
       };
-      conn.profileDir = path.posix.join(profileRoot, workspaceId, conn.id);
+      conn.profileDir = path.posix.join(profileRoot, workspaceId, conn.id, platform);
       data.connections.push(conn);
       await writeAtomic(filePath, data);
       return conn;
