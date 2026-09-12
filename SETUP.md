@@ -248,3 +248,42 @@ Before publishing a fork:
 - Review `SECURITY.md`.
 - If sensitive files were ever committed, scrub Git history or publish from a
   fresh repository.
+
+## noVNC platform connect flow (Linux server)
+
+The dashboard uses a per-connection virtual browser so you can log in to
+TikTok/Instagram/YouTube from any browser on your local network.
+
+Install the required packages once:
+
+```bash
+sudo apt install -y xvfb x11vnc fluxbox websockify novnc
+```
+
+Verify with:
+
+```bash
+npm run doctor
+```
+
+The doctor reports each binary and the `noVNC` static assets location.
+
+Environment variables (in `.env`, defaults shown):
+
+```
+SESSION_SECRET=<64 hex chars>   # required — generate with `openssl rand -hex 32`
+VNC_PORT_RANGE_START=5901
+VNC_PORT_RANGE_END=5920
+NOVNC_PORT_RANGE_START=6080
+NOVNC_PORT_RANGE_END=6099
+VNC_SESSION_TTL_SECONDS=900
+VNC_MAX_CONCURRENT=3
+PUBLIC_HOSTNAME=localhost       # override when accessed over LAN, e.g. 192.168.1.42
+```
+
+### First-run auth setup
+
+On first start with no `data/auth.json`, the dashboard redirects to
+`/auth/setup` where you create the admin account. All subsequent traffic
+requires login. Forgot the password? Use `/auth/reset` — the reset token
+is printed to the server terminal (never sent by email).
