@@ -181,6 +181,10 @@ async function createServer() {
   app.use("/auth", express.static(path.join(__dirname, "auth"), { extensions: ["html"] }));
   app.use(requireAuth);
 
+  app.locals.connectionStoreForCheck = connectionStore;
+  app.use(buildWorkspaceRouter(workspaceStore));
+  app.use(buildConnectionRouter(connectionStore, workspaceStore));
+
   app.use(createDashboardRequestGuard());
   app.use(express.static(path.join(__dirname, "..", "web")));
 
@@ -758,6 +762,102 @@ function buildAuthRouter(authStore, workspaceStore) {
   return router;
 }
 
+function buildWorkspaceRouter(workspaceStore) {
+  const router = express.Router();
+
+  router.get("/api/workspaces", async (req, res) => {
+    res.json({
+      ok: true,
+      workspaces: await workspaceStore.list(),
+      activeWorkspaceId: req.session.activeWorkspaceId || await workspaceStore.getActiveId(),
+    });
+  });
+
+  router.post("/api/workspaces", async (req, res) => {
+    try {
+      const ws = await workspaceStore.create(req.body.label);
+      req.session.activeWorkspaceId = req.session.activeWorkspaceId || ws.id;
+      res.json({ ok: true, workspace: ws });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.patch("/api/workspaces/:id", async (req, res) => {
+    try {
+      res.json({ ok: true, workspace: await workspaceStore.rename(req.params.id, req.body.label) });
+    } catch (err) {
+      res.status(err.message === "NOT_FOUND" ? 404 : 400).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.delete("/api/workspaces/:id", async (req, res) => {
+    const has = req.app.locals.connectionStoreForCheck
+      ? await req.app.locals.connectionStoreForCheck.workspaceHasConnections(req.params.id)
+      : false;
+    if (has) return res.status(409).json({ ok: false, error: "WORKSPACE_NOT_EMPTY" });
+    await workspaceStore.remove(req.params.id);
+    if (req.session.activeWorkspaceId === req.params.id) req.session.activeWorkspaceId = null;
+    res.json({ ok: true });
+  });
+
+  router.post("/api/workspaces/:id/activate", async (req, res) => {
+    try {
+      await workspaceStore.setActive(req.params.id);
+      req.session.activeWorkspaceId = req.params.id;
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(404).json({ ok: false, error: err.message });
+    }
+  });
+
+  return router;
+}
+
+function buildConnectionRouter(connectionStore, workspaceStore) {
+  const router = express.Router();
+
+  async function activeWorkspaceId(req) {
+    return req.session.activeWorkspaceId || await workspaceStore.getActiveId();
+  }
+
+  router.get("/api/connections", async (req, res) => {
+    const wsId = await activeWorkspaceId(req);
+    if (!wsId) return res.json({ ok: true, connections: [] });
+    res.json({ ok: true, connections: await connectionStore.listByWorkspace(wsId) });
+  });
+
+  router.post("/api/connections", async (req, res) => {
+    try {
+      const wsId = await activeWorkspaceId(req);
+      if (!wsId) return res.status(400).json({ ok: false, error: "NO_ACTIVE_WORKSPACE" });
+      const conn = await connectionStore.create({
+        workspaceId: wsId,
+        platform: req.body.platform,
+        label: req.body.label,
+      });
+      res.json({ ok: true, connection: conn });
+    } catch (err) {
+      res.status(400).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.patch("/api/connections/:id", async (req, res) => {
+    try {
+      res.json({ ok: true, connection: await connectionStore.rename(req.params.id, req.body.label) });
+    } catch (err) {
+      res.status(err.message === "NOT_FOUND" ? 404 : 400).json({ ok: false, error: err.message });
+    }
+  });
+
+  router.delete("/api/connections/:id", async (req, res) => {
+    await connectionStore.remove(req.params.id);
+    res.json({ ok: true });
+  });
+
+  return router;
+}
+
 if (require.main === module) {
   createServer().catch((error) => {
     console.error(error);
@@ -766,3 +866,5 @@ if (require.main === module) {
 }
 
 module.exports.buildAuthRouter = buildAuthRouter;
+module.exports.buildWorkspaceRouter = buildWorkspaceRouter;
+module.exports.buildConnectionRouter = buildConnectionRouter;
