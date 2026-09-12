@@ -107,8 +107,102 @@ async function loadWorkspaceSwitcher() {
 const PLATFORM_LABEL = { tiktok: "TikTok", instagram: "Instagram", youtube: "YouTube" };
 const PLATFORM_ICON = { tiktok: "🎵", instagram: "📷", youtube: "▶" };
 
-function openConnectModal(platform, connId, label) {
-  alert("Connect modal opens in Phase 6 (noVNC integration). Platform: " + platform);
+function showToast(text, kind = "success") {
+  const bg = kind === "error" ? "bg-rose-600" : "bg-emerald-600";
+  const el = document.createElement("div");
+  el.className = `fixed bottom-6 right-6 z-[60] px-4 py-2 rounded-xl text-white shadow-lg transition-all duration-300 opacity-0 ${bg}`;
+  el.textContent = text;
+  document.body.appendChild(el);
+  requestAnimationFrame(() => { el.classList.remove("opacity-0"); el.classList.add("opacity-100"); });
+  setTimeout(() => {
+    el.classList.remove("opacity-100");
+    el.classList.add("opacity-0");
+    setTimeout(() => el.remove(), 300);
+  }, 3000);
+}
+
+async function openConnectModal(platform, existingConnId, existingLabel) {
+  const slot = document.getElementById("connect-modal-slot");
+  if (!slot.dataset.loaded) {
+    slot.innerHTML = await (await fetch("/partials/connect-modal.html")).text();
+    slot.dataset.loaded = "1";
+  }
+  const modal = document.getElementById("connect-modal");
+  const title = document.getElementById("connect-modal-title");
+  const labelInput = document.getElementById("connect-label");
+  const statusEl = document.getElementById("connect-status");
+  const vncWrap = document.getElementById("connect-vnc-wrap");
+  const iframe = document.getElementById("connect-vnc-iframe");
+  const countdown = document.getElementById("connect-countdown");
+  const saveBtn = document.getElementById("connect-save-btn");
+  const cancelBtn = document.getElementById("connect-cancel-btn");
+  const closeBtn = document.getElementById("connect-modal-close");
+
+  title.textContent = `Connect ${platform} account`;
+  labelInput.value = existingLabel || "";
+  vncWrap.classList.add("hidden");
+  saveBtn.disabled = true;
+  statusEl.textContent = "Starting virtual browser…";
+  modal.classList.remove("hidden");
+
+  let connId = existingConnId;
+  if (!connId) {
+    const label = labelInput.value.trim() || `${platform} account`;
+    const created = await fetch("/api/connections", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ platform, label }),
+    }).then((r) => r.json());
+    if (!created.ok) { statusEl.textContent = created.error; return; }
+    connId = created.connection.id;
+  }
+
+  const spawn = await fetch(`/api/connections/${connId}/connect`, { method: "POST" }).then((r) => r.json());
+  if (!spawn.ok) { statusEl.textContent = spawn.error; return; }
+  statusEl.textContent = "Log in inside the virtual browser, then click Save Session.";
+  iframe.src = spawn.novncHttpUrl;
+  vncWrap.classList.remove("hidden");
+  saveBtn.disabled = false;
+
+  let expiresAt = new Date(spawn.expiresAt).getTime();
+  const tick = setInterval(() => {
+    const remainingMs = expiresAt - Date.now();
+    if (remainingMs <= 0) {
+      countdown.textContent = "Session expired.";
+      clearInterval(tick);
+      saveBtn.disabled = true;
+      return;
+    }
+    const mm = String(Math.floor(remainingMs / 60000)).padStart(2, "0");
+    const ss = String(Math.floor((remainingMs % 60000) / 1000)).padStart(2, "0");
+    countdown.textContent = `Session expires in ${mm}:${ss}`;
+  }, 1000);
+
+  function cleanup() {
+    clearInterval(tick);
+    modal.classList.add("hidden");
+    iframe.src = "about:blank";
+  }
+
+  cancelBtn.onclick = async () => { await fetch(`/api/connections/${connId}/cancel`, { method: "POST" }); cleanup(); await renderConnections(); };
+  closeBtn.onclick = cancelBtn.onclick;
+  saveBtn.onclick = async () => {
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Verifying…";
+    const res = await fetch(`/api/connections/${connId}/save-session`, { method: "POST" }).then((r) => r.json());
+    saveBtn.textContent = "Save Session";
+    if (res.ok) {
+      cleanup();
+      await renderConnections();
+      showToast("Session saved.");
+    } else if (res.error === "NO_SESSION_COOKIES") {
+      statusEl.textContent = "Login not detected inside the virtual browser. Complete login and try again.";
+      saveBtn.disabled = false;
+    } else {
+      statusEl.textContent = res.error || "Save failed.";
+      saveBtn.disabled = false;
+    }
+  };
 }
 
 async function renderConnections() {
