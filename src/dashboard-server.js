@@ -12,21 +12,25 @@ const { getDaemons, getAllStatus } = require("./daemon-registry");
 const { migrateQueueIfNeeded } = require("./migrate-queue");
 const { createStore: createWorkspaceStore } = require("./workspace-store");
 const { createStore: createConnectionStore } = require("./connection-store");
+const { resolveConnection } = require("./connection-resolver");
 const { runMigration } = require("./migrate-to-workspaces");
 const { createDashboardRequestGuard } = require("./request-guard");
 const { buildSetupHealth, getAllowedSetupFolderPath } = require("./setup-health");
 const {
   startDashboardLoginSession: startTikTokLoginSession,
+  startLoginSessionForConnection: startTikTokLoginSessionForConnection,
   getLoginSessionStatus: getTikTokLoginSessionStatus,
   closeLoginSession: closeTikTokLoginSession,
 } = require("./tiktok-uploader");
 const {
   startLoginSession: startInstagramLoginSession,
+  startLoginSessionForConnection: startInstagramLoginSessionForConnection,
   getLoginSessionStatus: getInstagramLoginSessionStatus,
   closeLoginSession: closeInstagramLoginSession,
 } = require("./instagram-uploader");
 const {
   startLoginSession: startYouTubeLoginSession,
+  startLoginSessionForConnection: startYouTubeLoginSessionForConnection,
   getLoginSessionStatus: getYouTubeLoginSessionStatus,
   closeLoginSession: closeYouTubeLoginSession,
 } = require("./youtube-uploader");
@@ -339,10 +343,18 @@ async function createServer() {
 
   app.post("/api/tiktok/login", async (req, res) => {
     try {
-      const result = await startTikTokLoginSession();
-      res.json(result);
-    } catch (error) {
-      res.status(400).json({ ok: false, error: error.message });
+      const conn = await resolveConnection({
+        connectionStore,
+        workspaceStore,
+        connectionId: req.query.connectionId,
+        platform: "tiktok",
+        session: req.session,
+      });
+      const result = await startTikTokLoginSessionForConnection(conn);
+      res.json({ ...result, connectionId: conn.id });
+    } catch (err) {
+      const map = { NOT_FOUND: 404, CONNECTION_ID_REQUIRED: 400, NO_CONNECTION: 400, NO_ACTIVE_WORKSPACE: 400, INVALID_PLATFORM: 400 };
+      res.status(map[err.message] || 500).json({ ok: false, error: err.message });
     }
   });
 
@@ -431,10 +443,18 @@ async function createServer() {
 
   app.post("/api/instagram/login", async (req, res) => {
     try {
-      const result = await startInstagramLoginSession();
-      res.json(result);
-    } catch (error) {
-      res.status(400).json({ ok: false, error: error.message });
+      const conn = await resolveConnection({
+        connectionStore,
+        workspaceStore,
+        connectionId: req.query.connectionId,
+        platform: "instagram",
+        session: req.session,
+      });
+      const result = await startInstagramLoginSessionForConnection(conn);
+      res.json({ ...result, connectionId: conn.id });
+    } catch (err) {
+      const map = { NOT_FOUND: 404, CONNECTION_ID_REQUIRED: 400, NO_CONNECTION: 400, NO_ACTIVE_WORKSPACE: 400, INVALID_PLATFORM: 400 };
+      res.status(map[err.message] || 500).json({ ok: false, error: err.message });
     }
   });
 
@@ -523,10 +543,18 @@ async function createServer() {
 
   app.post("/api/youtube/login", async (req, res) => {
     try {
-      const result = await startYouTubeLoginSession();
-      res.json(result);
-    } catch (error) {
-      res.status(400).json({ ok: false, error: error.message });
+      const conn = await resolveConnection({
+        connectionStore,
+        workspaceStore,
+        connectionId: req.query.connectionId,
+        platform: "youtube",
+        session: req.session,
+      });
+      const result = await startYouTubeLoginSessionForConnection(conn);
+      res.json({ ...result, connectionId: conn.id });
+    } catch (err) {
+      const map = { NOT_FOUND: 404, CONNECTION_ID_REQUIRED: 400, NO_CONNECTION: 400, NO_ACTIVE_WORKSPACE: 400, INVALID_PLATFORM: 400 };
+      res.status(map[err.message] || 500).json({ ok: false, error: err.message });
     }
   });
 
